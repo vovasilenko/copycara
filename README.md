@@ -1,189 +1,428 @@
 # Copycara: Topological Git DLP Engine
 
-**Copycara** — это локальный Git-движок Data Loss Prevention (DLP), построенный на принципах **Quadrant Architecture**. Он позволяет разработчику прозрачно вести разработку с использованием приватных методологий (PACM, GRACE, семантические якоря), автоматически вырезая их перед отправкой в публичный репозиторий, но сохраняя полную топологию графа и приватный бэкап.
+**Copycara** — локальный Git-движок Data Loss Prevention (DLP). Он автоматически вырезает приватные комментарии (PACM, GRACE, семантические якоря, Belief States, TODO, FIXME) перед отправкой кода в публичный репозиторий, сохраняя полную топологию Git-графа и создавая приватный бэкап оригиналов.
 
-В основе движка лежит абстрактное синтаксическое дерево (AST) на базе библиотеки `uncomment`, что гарантирует 100% безопасную очистку исходного кода без повреждения синтаксиса (в отличие от регулярных выражений).
-
-## 🚀 Ключевые возможности
-
-* **Forward Smudge (Надстройка над Git Hooks):** Автоматически перехватывает `commit`, `merge` и `amend`, создает очищенную теневую копию в `.copycara/mirror` и связывает графы через `git notes`.
-* **Reverse Smudge (Обратная синхронизация):** Команда `copycara sync` безопасно затягивает чистый код от других контрибьюторов в ваш размеченный workspace через алгоритм `3-way merge`.
-* **State Machine для конфликтов:** Встроенный конечный автомат элегантно ставит процесс на паузу при `merge conflicts`, позволяя разрешить их руками и продолжить через `--continue`.
-* **Идемпотентность:** Корректно обрабатывает перезапись истории (`rebase`, `amend`) без дублирования коммитов.
+Copycara не требует от разработчика менять привычки: `git add` / `git commit` / `git push` работают как обычно, а очистка происходит автоматически через git hooks. Для AI-агентов установлены хуки-щиты, блокирующие опасные операции (прямой пуш грязной ветки) с понятным сообщением об ошибке.
 
 ---
 
-## 🛠 Установка
-
-Убедитесь, что у вас установлен Rust (версии 1.70+).
+## ⚡ Быстрый старт
 
 ```bash
-# Клонирование и сборка монолитного бинарника
-git clone <your-repo>/copycara-mcp
-cd copycara-mcp
-cargo build --release
+# 1. Установка
+git clone <ваш-репозиторий> workspace
+cd workspace
 
-# Опционально: добавление в PATH для глобального использования
-sudo cp target/release/copycara-mcp /usr/local/bin/copycara
+# 2. Настройка remote (если ещё не настроены)
+git remote add origin <публичный-URL>
+git remote add private <приватный-URL>
+
+# 3. Инициализация Copycara
+copycara init
+
+# 4. Работа как обычно
+echo 'print("hello")' > main.py
+git add main.py
+git commit -m "feat: init"
+copycara push           # публикует чистый код + бэкап
 ```
+
+> Если в репозитории ещё нет коммитов — `copycara init` сам создаст пустой коммит.
 
 ---
 
-## 📖 Руководство пользователя (Workflow)
+## 🏗 Архитектура
 
-Движок делит мир на два репозитория: `origin` (публичный/чистый) и `private` (бэкап с разметкой).
+### Две плоскости
 
-### 1. Инициализация
+| Плоскость | Где находится | Что содержит |
+|-----------|--------------|--------------|
+| **Dirty Plane** (Workspace) | Ваша рабочая директория | Оригинальный код с комментариями, TODO, методологическими тегами |
+| **Clean Plane** (Mirror) | `.copycara/mirror` | Стерильная копия без комментариев |
 
-Перейдите в ваш рабочий каталог с настроенными `origin` и `private` remote-серверами и выполните:
+### Очистка (DLP)
+
+Движок использует библиотеку **uncomment**, построенную на **tree-sitter AST**:
+
+- Парсит исходный код синтаксически, а не регулярками
+- Не повреждает строковые литералы (`print("// не комментарий")`)
+- Поддерживает все языки tree-sitter: Python, Rust, JS, TS, C++, Go, Java, C#, Ruby, Bash и десятки других
+- Управляется файлом `.copycara/config.toml`
+
+Если коммит содержит только комментарии — он полностью отбрасывается из теневой истории (Drop Empty Commit).
+
+### Маршрутизация (Refspecs)
+
+При `copycara init` настраиваются refspecs, которые автоматически подменяют ветки при пуше:
+
+```
+remote.origin.push = refs/copycara/heads/*:refs/heads/*
+```
+
+Когда вы делаете `git push origin` (без имени ветки), Git вместо вашей грязной `refs/heads/main` отправляет чистую `refs/copycara/heads/main`. Публичный сервер никогда не видит ваши комментарии.
+
+### Карта соответствия (Git Notes)
+
+Связь между грязным и чистым коммитом хранится в `git notes` по ссылке `refs/notes/copycara-map`. При push в `private` эта карта бэкапируется вместе с оригинальным кодом.
+
+---
+
+## 📦 Команды Copycara
+
+### `copycara init`
+
+Инициализирует репозиторий: настраивает refspecs, создаёт `.copycara/mirror`, устанавливает хуки, конфиг и git config hints для AI-агентов.
 
 ```bash
 copycara init
 ```
 
-Утилита создаст теневое дерево `.copycara/mirror`, пропишет нужный роутинг в `.git/config` и установит триггеры (`post-commit`, `post-rewrite`).
+Что делает под капотом:
 
-### 2. Ежедневная разработка
+| Шаг | Действие |
+|-----|----------|
+| 0 | Если HEAD отсутствует — создаёт `git commit --allow-empty` (autofix) |
+| 1 | Настраивает `remote.origin.push` (shadow → clean) и `remote.private.push` (dirty + notes) |
+| 2 | Создаёт `.copycara/mirror` (worktree), записывает `.copycara/config.toml` |
+| 3 | Устанавливает 5 git hooks (post-commit, post-merge, post-rewrite, pre-push, post-checkout) |
+| 4 | Перенаправляет upstream текущей ветки на `private` (или отключает tracking на `origin`) |
+| 5 | Записывает `git config --local copycara.{enabled,sync-command,push-command}` |
 
-Работайте как обычно! Пишите код, оставляйте приватные маркеры `// DLP-DROP` или методологические комментарии, делайте коммиты.
+### `copycara push`
+
+Безопасно публикует код в оба remote.
+
+```bash
+copycara push                          # чистый код → origin + бэкап → private
+copycara push --force                  # с --force-with-lease (после amend)
+copycara push --no-private             # только origin, без бэкапа
+```
+
+Под капотом:
+
+1. `git push origin` — пушит `refs/copycara/heads/* → refs/heads/*` (чистый код)
+2. `git push private` — пушит dirty refs + `refs/notes/copycara-map` (бэкап)
+
+> `--force` использует `--force-with-lease`, а не `--force`: если кто-то другой изменил ветку на сервере с момента вашего последнего fetch — пуш будет отклонён.
+
+### `copycara sync`
+
+Получает изменения коллег из `origin` и накладывает их на ваш грязный workspace.
+
+```bash
+copycara sync
+```
+
+Как работает:
+
+1. Fetch из `origin/current_branch`
+2. Merge в `.copycara/mirror` (чистый граф)
+3. Diff между старым и новым чистым состоянием
+4. 3-way merge патча в ваш workspace
+
+Если возникает конфликт — sync останавливается, записывается `.copycara/SYNC_IN_PROGRESS`. Вы разрешаете конфликт и коммитите — хук автоматически завершает синхронизацию.
+
+### `copycara uninstall`
+
+Полностью удаляет Copycara из репозитория.
+
+```bash
+copycara uninstall
+```
+
+Удаляет: refspecs, `.copycara/`, все 5 хуков, git config hints.
+
+---
+
+## 🛠 Повседневный Workflow
+
+### Коммиты
 
 ```bash
 git add .
-git commit -m "feat: new feature with GRACE methodology"
-git push origin   # Улетает очищенная теневая копия
-git push private  # Улетает оригинальный код с вашими секретами
+git commit -m "feat: implement auth with GRACE anchors"
+```
+> Комментарии в коде автоматически вырезаются post-commit хуком.
+
+### Отправка изменений
+
+| Команда | Что делает |
+|---------|-----------|
+| `copycara push` | **(рекомендуется)** Чистый код → origin + бэкап → private |
+| `git push origin` | Только чистый код → origin (refspec подменяет ветку) |
+| `git push private` | Только грязный бэкап → private |
+| `copycara push --force` | После amend: force push с `--force-with-lease` |
+
+> `git push origin main` — **запрещено**. Pre-push hook заблокирует с сообщением.
+
+### Изменение истории
+
+```bash
+git commit --amend -m "new message"
 ```
 
-### 3. Синхронизация с сервером (Pull)
+Хук `post-rewrite` создаёт новый теневой коммит, обновляет `refs/copycara/heads/main` и карту `git notes`.
 
-**Никогда не используйте `git pull`!** Это смешает грязный и чистый графы. Вместо этого используйте:
+После amend push с `--force` обязателен, так как теневая история разошлась:
+
+```bash
+copycara push --force
+```
+
+### Получение изменений
 
 ```bash
 copycara sync
 ```
 
-Утилита скачает чистый код, вычислит AST-безопасный патч и применит его поверх ваших секретов.
+Заменяет `git pull`. Не используйте `git pull` — он смешает чистый граф с грязным.
 
-Если возникнет конфликт слияния:
+### Ветвление
 
-1. Решите конфликт в редакторе (уберите маркеры `<<<<`, `====`, `>>>>`).
-2. Добавьте файл в индекс: `git add <file>`.
-3. Завершите синхронизацию: `copycara sync --continue`.
+```bash
+git checkout -b feature/new
+# post-checkout hook сам настроит upstream на private (или снимет tracking с origin)
+git push private       # бэкап новой ветки
+```
 
 ---
 
-## 🧪 Инструкция по тестированию (Стресс-тест архитектуры)
+## 🚨 Защита AI-агентов
 
-Чтобы убедиться в надежности движка, вы можете развернуть локальную "песочницу" и прогнать 5 ключевых этапов жизненного цикла.
+### Активные щиты
 
-### Шаг 0: Подготовка песочницы
+| Попытка | Реакция | Результат |
+|---------|---------|-----------|
+| `git push origin main` | Pre-push hook: **BLOCKED** + инструкция | Пуш отклонён, данные в безопасности |
+| `git push origin feature/x` | Pre-push hook: **BLOCKED** + инструкция | Пуш отклонён |
+| `git pull` | upstream настроен на `private` | Тянет грязный бэкап (безопасно) |
+| `git pull origin main` | Вливает чистый код в dirty workspace | Не рекомендуется, но данные не утекают |
+| Новый проект (`git init`, `copycara init`) | Autofix: пустой коммит | Работает без ошибок |
 
-Выполните этот скрипт, чтобы создать тестовое окружение:
+### AI Agent Directives
 
-```bash
-mkdir copycara-sandbox && cd copycara-sandbox
-git init --bare public.git
-git init --bare private.git
-git clone public.git workspace
-cd workspace
-git remote add private ../private.git
-git commit --allow-empty -m "init"
+| Запрещено | Правильная команда | Причина |
+|-----------|-------------------|---------|
+| `git push origin <branch>` | `git push origin` или `copycara push` | Прямой пуш отправляет грязный код (с комментариями) в публичный репозиторий |
+| `git pull` | `copycara sync` | `git pull` смешивает чистый и грязный графы |
+| `git pull origin <branch>` | `copycara sync` | Аналогично |
 
-# Инициализируем движок (укажите путь до вашего бинарника copycara)
-copycara init
-```
+### Git config hints
 
-### Этап 1: Базовая фильтрация и пустые коммиты
-
-Проверяем, что AST-парсер удаляет комментарии, а движок игнорирует коммиты, состоящие только из секретов.
-
-```bash
-# Коммит с кодом и секретами
-echo 'print("System initialized")' > main.py
-echo '# TODO: добавить интеграцию с БД' >> main.py
-git add main.py
-git commit -m "feat: add main module"
-
-# Коммит ТОЛЬКО с секретами (будет отброшен)
-echo '    # Внимание: костыль // DLP-DROP' >> main.py
-git add main.py
-git commit -m "chore: private notes"
-
-git push origin && git push private
-# Проверка: git --git-dir=../public.git show HEAD:main.py (должен быть без секретов)
-```
-
-### Этап 2: Топология графов
-
-Проверяем корректную работу с ветвлениями и merge-коммитами.
+Copycara записывает в локальный git config ключи. Вы можете их прочитать:
 
 ```bash
-git checkout -b feature/auth
-echo 'def auth(): return True' > auth.py
-git add auth.py
-git commit -m "feat: add auth logic"
-
-git checkout main
-git merge feature/auth --no-ff -m "Merge branch feature/auth"
-git push origin && git push private
-# Проверка: git --git-dir=../public.git log --graph --oneline (ромб должен сохраниться)
+git config --local --list | grep copycara
+# copycara.enabled=true
+# copycara.sync-command=copycara sync
+# copycara.push-command=copycara push
 ```
 
-### Этап 3: Чистая обратная синхронизация
+---
 
-Эмулируем работу коллеги в чистом репозитории.
+## ⚙️ Конфигурация (`.copycara/config.toml`)
+
+Создаётся автоматически при `copycara init`. Ниже — полная структура и практические примеры.
+
+### Все поля
+
+```toml
+[cleanup]
+# "all" — удалять ВСЕ комментарии | "smart" — сохранять TODO/FIXME/doc
+mode = "all"
+
+# Расширения, которых нет в списке valid_exts, но их тоже надо чистить.
+# extension_map (см. ниже) обычно удобнее.
+extra_extensions = []
+
+# Комментарии, содержащие эти подстроки, НЕ вырезаются (сохраняются как есть)
+preserve_patterns = ["COPYCARA-KEEP", "NO-DLP"]
+
+# Маппинг расширений, которые tree-sitter не знает, на известные.
+# Работает через rename-trick: файл переименовывается, чистится, и
+# переименовывается обратно.
+# Пример: .cu (CUDA C++) → .cpp
+extension_map = { cu = "cpp", cuh = "cpp" }
+
+[push]
+# Автоматический пуш в private remote при copycara push
+auto_push_private = true
+
+# Использовать --force-with-lease (безопасный force) при copycara push --force
+force_with_lease = true
+
+[hooks]
+# Установить pre-push хук (блокировка git push origin <branch>)
+install_pre_push = true
+
+# Установить post-checkout хук (автонастройка upstream для новых веток)
+install_post_checkout = true
+```
+
+### Пример 1: CUDA C++ (`.cu`, `.cuh`)
+
+tree-sitter не знает про `.cu` — это CUDA C++. Если попробовать,
+uncomment скажет `Unsupported file type: kernel.cu`.
+
+Раньше вы обходили это ручным переименованием `.cu → .cpp`. Теперь это
+делает конфиг:
+
+```toml
+[cleanup]
+extension_map = { cu = "cpp", cuh = "cpp" }
+```
+
+Copycara перед очисткой переименует файл из `kernel.cu` в `kernel.cpp`,
+uncomment распарсит его как C++ и вырежет комментарии, затем переименует
+обратно в `kernel.cu`.
+
+### Пример 2: Smart mode — сохраняем TODO и доку-комментарии
+
+```toml
+[cleanup]
+mode = "smart"
+```
+
+В `"smart"` режиме Copycara **не вырезает**:
+- `TODO`, `todo`
+- `FIXME`, `fixme`
+- doc-комментарии (`///`, `/** */`, `#| ... |#` и т.д.)
+
+Удаляются только обычные комментарии:
+```python
+# Этот комментарий будет удалён
+x = 1
+# TODO: эта метка СОХРАНИТСЯ в публичном коде
+y = 2
+```
+
+### Пример 3: Паттерны сохранения
+
+```toml
+[cleanup]
+preserve_patterns = ["COPYCARA-KEEP", "NO-DLP", "PUBLIC-OK"]
+```
+
+Комментарии, содержащие любое из этих слов, не удаляются:
+```python
+# COPYCARA-KEEP: эта метка не вырежется
+# PUBLIC-OK: этот комментарий останется в публичном коде
+# А этот — удалится
+```
+
+### Пример 4: Несколько неизвестных расширений
+
+```toml
+[cleanup]
+extension_map = { cu = "cpp", cuh = "cpp", metal = "cpp", cl = "c" }
+```
+
+- `.metal` (Apple Metal Shading Language) → C++
+- `.cl` (OpenCL) → C
+- `.cu` / `.cuh` (CUDA C++) → C++
+
+### Пример 5: Kotlin / Swift (если не хватает valid_exts)
+
+```toml
+[cleanup]
+extra_extensions = ["kt", "kts", "swift"]
+```
+
+`extra_extensions` просто добавляет расширения в белый список —
+tree-sitter сам должен знать эти языки. Если не знает — используйте
+`extension_map`.
+
+### Пример 6: Полный агрессивный режим
+
+```toml
+[cleanup]
+mode = "all"
+# Ничего не сохраняем — даже если кто-то поставил ~keep
+preserve_patterns = []
+
+[hooks]
+install_pre_push = true
+```
+
+---
+
+## 🪝 Система хуков
+
+| Хук | Событие | Действие |
+|-----|---------|----------|
+| **post-commit** | После каждого коммита | Очищает код в `.copycara/mirror` через uncomment, создаёт теневой коммит, обновляет `git notes` |
+| **post-merge** | После merge (в т.ч. `git pull`) | Аналогично post-commit |
+| **post-rewrite** | После amend / rebase | Создаёт новый теневой коммит, обновляет refspec |
+| **pre-push** | Перед `git push origin` | Блокирует `git push origin <branch>` (грязные ветки), пропускает `git push origin` (shadow-рефы) и `git push private` |
+| **post-checkout** | После checkout новой ветки | Настраивает upstream на private (или отключает tracking на origin) |
+
+---
+
+## ⚠️ Тонкие моменты
+
+### `non-fast-forward` при пуше
+
+**Симптом:** `Updates were rejected because the tip of your current branch is behind...`
+
+**Причина:** Теневая история разошлась (например, после `amend` или `rebase` — post-rewrite пересоздаёт теневой коммит, и старый на сервере становится неактуальным).
+
+**Решение:** `copycara push --force`. Использует `--force-with-lease` — безопасен при командной работе.
+
+### Сообщение `diverged` в `git status`
+
+**Причина:** Локальный `main` трекает `origin/main`, но на сервере лежат чистые коммиты (другие хэши).
+
+**Решение:** `copycara init` автоматически перенаправляет upstream на `private/main` или отключает tracking. Если проблема осталась:
 
 ```bash
-cd ..
-git clone public.git coworker-workspace
-cd coworker-workspace
-echo 'def logout(): return False' >> auth.py
-git add auth.py
-git commit -m "feat: add logout logic"
-git push origin main
-
-# Возвращаемся в наш workspace и затягиваем изменения
-cd ../workspace
-copycara sync
+git branch --set-upstream-to=private/main main
 ```
 
-### Этап 4: Разрешение конфликтов (State Machine)
+### Пустой репозиторий
 
-Эмулируем пересечение изменений.
+`copycara init` сам создаёт пустой коммит, если HEAD отсутствует. Ручной `git commit --allow-empty` не требуется.
+
+### Новые типы файлов / языки
+
+tree-sitter поддерживает большинство языков автоматически. Если файл не обрабатывается — проверьте расширение в списке `valid_exts` в `apply_dlp_cleanup()` или используйте `extra_extensions` в `.copycara/config.toml`.
+
+### После разрешения конфликтов sync
+
+Входящий код приходит из чистого графа — в нём нет комментариев и тегов. После разрешения конфликтов проверьте код и при необходимости добавьте методологические теги обратно.
+
+---
+
+## 📋 Quick Reference
 
 ```bash
-cd ../coworker-workspace
-sed -i 's/System initialized/System online/g' main.py
-git add main.py
-git commit -m "fix: update init message"
-git push origin main
+# Инициализация
+copycara init                          # настроить Copycara в репозитории
+copycara uninstall                     # удалить Copycara
 
-cd ../workspace
-copycara sync
-# УТИЛИТА УПАДЕТ С ОШИБКОЙ КОНФЛИКТА - это норма!
+# Ежедневная работа
+git add . && git commit -m "msg"       # как обычно
+copycara push                          # отправить чистый код + бэкап
+copycara push --force                  # после amend (с --force-with-lease)
+copycara sync                          # получить изменения коллег (вместо git pull)
 
-# Разрешаем конфликт (в реальности вы отредактируете файл руками):
-echo 'print("System online")' > main.py
-echo '# TODO: добавить интеграцию с БД' >> main.py
-echo '    # Внимание: костыль // DLP-DROP' >> main.py
+# Работа с private бэкапом
+git push private                       # только бэкап
 
-git add main.py
-copycara sync --continue
+# Если случайно написали
+git push origin main                   # ❌ заблокировано pre-push hook
+git push origin                        # ✅ чистая публикация через refspec
+
+# См. также
+git config --local --list | grep copycara  # git config hints для AI-агентов
 ```
 
-### Этап 5: Перезапись истории (Post-Rewrite)
+---
 
-Проверяем работу хука при `git commit --amend`.
+## 🧪 Тестирование
 
 ```bash
-echo 'print("End of program")' >> main.py
-git add main.py
-git commit -m "chore: finish program"
-
-# Забыли секрет! Переписываем коммит:
-echo '# Финальный костыль // DLP-DROP' >> main.py
-git add main.py
-git commit --amend -m "chore: finish program with fixes"
-
-git push origin && git push private
+./test.sh
+# Passed: 42, Failed: 0
 ```
+
+Создаёт песочницу в `~/Lab/copycara-sandbox/` с двумя bare-репозиториями (public + private), клонирует workspace, инициализирует Copycara и прогоняет 7 этапов тестирования: DLP-фильтрация, топология merge, reverse sync, конфликты, amend + force push, pre-push hook, push variants.
