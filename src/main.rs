@@ -23,6 +23,8 @@ struct Cli {
 enum Commands {
     /// Инициализация теневого зеркала и хуков в текущем репозитории
     Init,
+    /// Полное удаление Copycara из репозитория (восстановление стандартного Git)
+    Uninstall,
     /// Обработка коммита (вызывается автоматически через git hooks)
     ProcessCommit {
         /// Хэш коммита для обработки
@@ -95,7 +97,7 @@ fn write_executable_script(path: &Path, content: &str) -> Result<()> {
 }
 
 // ==========================================
-// БЛОК ИНИЦИАЛИЗАЦИИ
+// БЛОК ИНИЦИАЛИЗАЦИИ И УДАЛЕНИЯ
 // ==========================================
 
 fn init_command() -> Result<()> {
@@ -138,6 +140,32 @@ fn init_command() -> Result<()> {
     println!("\n[Success] Repository initialized with Copycara DLP engine!");
     println!("Hooks point to: {}", exe_str);
     
+    Ok(())
+}
+
+fn uninstall_command() -> Result<()> {
+    println!("[Copycara Uninstall] Removing DLP engine from repository...");
+
+    if !Path::new(".git").exists() {
+        anyhow::bail!("No .git directory found! Please run 'copycara uninstall' inside a git repository.");
+    }
+
+    println!("[Copycara Uninstall] 1. Removing Git refspecs routing...");
+    // Используем .ok(), чтобы игнорировать ошибки, если ключей уже нет
+    run_git(&["config", "--unset-all", "remote.origin.push"], None).ok();
+    run_git(&["config", "--unset-all", "remote.private.push"], None).ok();
+
+    println!("[Copycara Uninstall] 2. Removing shadow worktree and .copycara directory...");
+    run_git(&["worktree", "remove", "-f", ".copycara/mirror"], None).ok();
+    let _ = fs::remove_dir_all(".copycara");
+
+    println!("[Copycara Uninstall] 3. Removing Git hooks...");
+    let _ = fs::remove_file(".git/hooks/post-commit");
+    let _ = fs::remove_file(".git/hooks/post-merge");
+    let _ = fs::remove_file(".git/hooks/post-rewrite");
+
+    println!("\n[Success] Copycara DLP engine has been completely removed from this repository.");
+    println!("Standard Git behavior is fully restored.");
     Ok(())
 }
 
@@ -189,28 +217,23 @@ fn apply_dlp_cleanup(dir: &Path) -> Result<()> {
 // ==========================================
 
 fn process_commit_command(target_hash: &str) -> Result<()> {
-    // --- ИНТЕГРАЦИЯ АВТОМАТИЧЕСКОГО CONTINUE ---
     if Path::new(SYNC_STATE_FILE).exists() {
         let original_hash = run_git(&["rev-parse", target_hash], None)?.trim().to_string();
         println!("\n[Copycara Engine] Sync state detected. Finalizing reverse patch resolution...");
         
         let shadow_hash = fs::read_to_string(SYNC_STATE_FILE)?.trim().to_string();
         
-        // Связываем вновь созданный коммит разрешения конфликта с чистым серверным коммитом
         run_git(&["notes", "--ref", "copycara-map", "add", "-f", "-m", &shadow_hash, &original_hash], None)?;
 
-        // Убираем временные файлы
         let _ = fs::remove_file(SYNC_STATE_FILE);
         let _ = fs::remove_file(PATCH_FILE);
 
         println!("[Success] Workspace synced automatically via post-commit hook! Reverse mapping created:");
         println!("Original: {} -> Shadow: {}", &original_hash[0..7], &shadow_hash[0..7]);
         
-        // Прерываем выполнение, так как это не новый пользовательский код, а завершение синхронизации
         return Ok(());
     }
 
-    // Стандартный пайплайн очистки (Forward Smudge)
     let original_hash = run_git(&["rev-parse", target_hash], None)?.trim().to_string();
     let original_msg = run_git(&["log", "-1", "--pretty=%B", &original_hash], None)?.trim().to_string();
 
@@ -368,7 +391,6 @@ fn sync_start() -> Result<()> {
         fs::write(SYNC_STATE_FILE, &new_shadow_hash)?;
         println!("\n[!] Conflict detected during 3-way merge!");
         println!("Please resolve conflicts in your working directory and run 'git add'.");
-        // Обновленная инструкция для пользователя
         println!("After that, simply run 'git commit -m \"Resolve sync conflict\"' to finalize the sync automatically.");
         return Err(e);
     }
@@ -395,6 +417,7 @@ fn main() {
 
     let result = match &cli.command {
         Commands::Init => init_command(),
+        Commands::Uninstall => uninstall_command(),
         Commands::ProcessCommit { target_hash } => process_commit_command(target_hash),
         Commands::Sync { resume } => {
             if *resume {
