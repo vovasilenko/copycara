@@ -44,10 +44,8 @@ fn test_version() {
 
 fn run_copycara(args: &[&str]) -> common::CommandResult {
     let bin = common::copycara_bin();
-    let output = std::process::Command::new(&bin)
-        .args(args)
-        .output()
-        .expect("copycara execution failed");
+    let output =
+        std::process::Command::new(&bin).args(args).output().expect("copycara execution failed");
     common::CommandResult {
         status: output.status,
         stdout: String::from_utf8_lossy(&output.stdout).into_owned(),

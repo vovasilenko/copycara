@@ -30,10 +30,7 @@ impl TestEnv {
     pub fn new() -> Self {
         let root = std::env::temp_dir().join(format!(
             "copycara-test-{}",
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
+            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
         ));
         let public = root.join("public.git");
         let private = root.join("private.git");

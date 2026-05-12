@@ -28,7 +28,11 @@ fn test_dlp_scrubs_comments() {
 
     // Create a .py file with comments and commit it
     let main_py = env.workspace.join("main.py");
-    std::fs::write(&main_py, "print('hello')\n# TODO: this should be removed\n# DLP-DROP: secret\n").unwrap();
+    std::fs::write(
+        &main_py,
+        "print('hello')\n# TODO: this should be removed\n# DLP-DROP: secret\n",
+    )
+    .unwrap();
     env.git(&["add", "main.py"]);
     let commit = env.git(&["commit", "-m", "feat: add main.py"]);
     assert!(commit.success());
@@ -41,8 +45,16 @@ fn test_dlp_scrubs_comments() {
     let public_main = env.git_bare(&env.public, &["show", "HEAD:main.py"]);
     assert!(public_main.success());
     assert!(!public_main.stdout.contains("TODO"), "TODO leaked to public:\n{}", public_main.stdout);
-    assert!(!public_main.stdout.contains("DLP-DROP"), "DLP-DROP leaked to public:\n{}", public_main.stdout);
-    assert!(public_main.stdout.contains("print('hello')"), "functional code missing:\n{}", public_main.stdout);
+    assert!(
+        !public_main.stdout.contains("DLP-DROP"),
+        "DLP-DROP leaked to public:\n{}",
+        public_main.stdout
+    );
+    assert!(
+        public_main.stdout.contains("print('hello')"),
+        "functional code missing:\n{}",
+        public_main.stdout
+    );
 }
 
 #[test]
@@ -52,7 +64,10 @@ fn test_init_on_existing_commit_is_idempotent() {
     env.git(&["commit", "--allow-empty", "-m", "existing init"]);
     let result = env.copycara(&["init"]);
     assert!(result.success(), "init on existing commit failed:\n{}", result.stderr);
-    assert!(!result.stdout.contains("initial commit"), "autofix should not trigger when HEAD exists");
+    assert!(
+        !result.stdout.contains("initial commit"),
+        "autofix should not trigger when HEAD exists"
+    );
 }
 
 #[test]
@@ -73,5 +88,9 @@ fn test_push_to_private_backup() {
     // Private backup should have the comment
     let private_main = env.git_bare(&env.private, &["show", "HEAD:main.py"]);
     assert!(private_main.success());
-    assert!(private_main.stdout.contains("private comment"), "private backup missing comment:\n{}", private_main.stdout);
+    assert!(
+        private_main.stdout.contains("private comment"),
+        "private backup missing comment:\n{}",
+        private_main.stdout
+    );
 }

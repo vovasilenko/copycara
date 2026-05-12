@@ -18,7 +18,7 @@ install:
 
 clean:
     cargo clean
-    rm -rf {{home}}/Lab/copycara-sandbox
+    rm -rf ~/Lab/copycara-sandbox
 
 audit:
     cargo deny check 2>/dev/null || echo "  [skip] Install cargo-deny: cargo install cargo-deny"

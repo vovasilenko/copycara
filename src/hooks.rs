@@ -153,10 +153,7 @@ mod tests {
     #[test]
     fn test_install_hooks_respects_config() {
         let config = CopycaraConfig {
-            hooks: HooksConfig {
-                install_pre_push: false,
-                install_post_checkout: false,
-            },
+            hooks: HooksConfig { install_pre_push: false, install_post_checkout: false },
             ..CopycaraConfig::default()
         };
         // No actual file writes; this just validates the config is used
