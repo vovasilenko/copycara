@@ -1,5 +1,7 @@
 # Copycara: Topological Git DLP Engine
 
+[![CI](https://github.com/vovasilenko/copycara/actions/workflows/ci.yml/badge.svg)](https://github.com/vovasilenko/copycara/actions/workflows/ci.yml)
+
 **Copycara** — локальный Git-движок Data Loss Prevention (DLP). Он автоматически вырезает приватные комментарии (PACM, GRACE, семантические якоря, Belief States, TODO, FIXME) перед отправкой кода в публичный репозиторий, сохраняя полную топологию Git-графа и создавая приватный бэкап оригиналов.
 
 Copycara не требует от разработчика менять привычки: `git add` / `git commit` / `git push` работают как обычно, а очистка происходит автоматически через git hooks. Для AI-агентов установлены хуки-щиты, блокирующие опасные операции (прямой пуш грязной ветки) с понятным сообщением об ошибке.
