@@ -228,8 +228,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "copycara-mcp"
-version = "0.1.0"
+name = "copycara"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",

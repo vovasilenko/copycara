@@ -1,7 +1,26 @@
 [package]
-name = "copycara-mcp"
-version = "0.1.0"
+name = "copycara"
+version = "0.2.0"
 edition = "2024"
+description = "Topological Git DLP Engine — transparent comment scrubbing for AI-augmented development"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/your-org/copycara"
+keywords = ["git", "dlp", "security", "comments", "ast"]
+categories = ["command-line-utilities", "development-tools"]
+rust-version = "1.85"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
 
 [dependencies]
 clap = { version = "4.4", features = ["derive"] }

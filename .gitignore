@@ -1,1 +1,6 @@
 /target
+**/*.rs.bk
+.env
+.copycara/
+.kilo/
+.notes/

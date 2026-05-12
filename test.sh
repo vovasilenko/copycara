@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-COPYCARA_BIN="$HOME/Lab/copycara-mcp/target/release/copycara-mcp"
+COPYCARA_BIN="$HOME/Lab/copycara-mcp/target/release/copycara"
 SANDBOX="$HOME/Lab/copycara-sandbox"
 PASS=0
 FAIL=0
