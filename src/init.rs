@@ -87,6 +87,12 @@ pub fn init_command() -> Result<()> {
     let _ = run_git(&["config", "--local", "copycara.sync-command", "copycara sync"], None);
     let _ = run_git(&["config", "--local", "copycara.push-command", "copycara push"], None);
 
+    println!("[Copycara Init] 6. Creating initial shadow commit for current branch...");
+    if let Err(e) = crate::commit::process_commit_command("HEAD") {
+        eprintln!("  [Warning] Could not create initial shadow commit: {e}");
+        eprintln!("  The first 'copycara push' may fail. Push with '--force' to bootstrap.");
+    }
+
     println!("\n[Success] Repository initialized with Copycara DLP engine!");
     println!("Hooks point to: {exe_str}");
 
