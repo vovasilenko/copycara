@@ -1,6 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
+export GIT_AUTHOR_NAME="Copycara Test"
+export GIT_AUTHOR_EMAIL="test@copycara.local"
+export GIT_COMMITTER_NAME="Copycara Test"
+export GIT_COMMITTER_EMAIL="test@copycara.local"
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 COPYCARA_BIN="$SCRIPT_DIR/target/release/copycara"
 SANDBOX="${COPYCARA_SANDBOX:-$HOME/Lab/copycara-sandbox}"
