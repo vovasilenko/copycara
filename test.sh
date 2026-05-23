@@ -32,6 +32,7 @@ if [ ! -x "$COPYCARA_BIN" ]; then
     cargo build --release
 fi
 
+mkdir -p "$SANDBOX"
 cd "$SANDBOX"
 rm -rf public.git private.git workspace coworker-workspace
 
