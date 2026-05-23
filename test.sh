@@ -27,8 +27,10 @@ assert_file_exists() {
 }
 
 echo "=== ШАГ 0: Пересборка и подготовка песочницы ==="
-cd ~/Lab/copycara-mcp
-cargo build --release
+cd "$SCRIPT_DIR"
+if [ ! -x "$COPYCARA_BIN" ]; then
+    cargo build --release
+fi
 
 cd "$SANDBOX"
 rm -rf public.git private.git workspace coworker-workspace
