@@ -112,7 +112,8 @@ fn visit_dirs(
         let path = entry.path();
 
         if path.is_dir() {
-            if path.file_name().unwrap_or_default() != ".git" {
+            let dir_name = path.file_name().unwrap_or_default();
+            if dir_name != ".git" && dir_name != ".copycara" {
                 visit_dirs(&path, processor, config_manager, options, ext_map, extra_extensions)?;
             }
         } else if let Some(ext_os) = path.extension() {

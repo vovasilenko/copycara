@@ -62,6 +62,10 @@ pub fn process_commit_command(target_hash: &str) -> Result<()> {
 
     run_git(&["checkout", &original_hash, "--", "."], Some(mirror_dir))?;
     dlp::apply_dlp_cleanup(Path::new(mirror_dir)).context("Failed to apply uncomment library")?;
+
+    // Strip .copycara/ from the shadow tree — must never leak to public origin
+    let _ = run_git(&["rm", "-rf", "--cached", ".copycara"], Some(mirror_dir));
+
     run_git(&["add", "."], Some(mirror_dir))?;
 
     let is_clean = run_git(&["diff", "--cached", "--quiet"], Some(mirror_dir)).is_ok();
