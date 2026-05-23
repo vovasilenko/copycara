@@ -6,6 +6,8 @@ export GIT_AUTHOR_EMAIL="test@copycara.local"
 export GIT_COMMITTER_NAME="Copycara Test"
 export GIT_COMMITTER_EMAIL="test@copycara.local"
 
+git config --global init.defaultBranch main
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 COPYCARA_BIN="$SCRIPT_DIR/target/release/copycara"
 SANDBOX="${COPYCARA_SANDBOX:-$HOME/Lab/copycara-sandbox}"
