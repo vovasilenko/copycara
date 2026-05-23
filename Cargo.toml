@@ -1,6 +1,6 @@
 [package]
 name = "copycara"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 description = "Topological Git DLP Engine — transparent comment scrubbing for AI-augmented development"
 license = "MIT OR Apache-2.0"

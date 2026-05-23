@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.2.1] - 2026-05-23
+
+### Fixed
+- **Config dead code eliminated**: `extra_extensions`, `auto_push_private`, and `force_with_lease`
+  are now fully operational in DLP and push modules (were deserialized but ignored)
+- **Uninstall now removes git config hints** (`copycara.enabled/sync-command/push-command`)
+- **Test race condition fixed**: atomic counter replaces `SystemTime::as_nanos()` for test directory names
+
+### Added
+- **90+ file extensions** now supported out of the box (was 14) — all languages from `uncomment` v3.0.2
+- **CI now runs `test.sh`** (full E2E sandbox) in addition to `cargo test`
+- `test.sh` sandbox path parametrized via `COPYCARA_SANDBOX` env var for CI compatibility
+
+### Changed
+- README language claims updated from "all languages / dozens" to specific count + extension mechanisms
+- Cargo.toml: fixed repository URL to `https://github.com/vovasilenko/copycara`
+
 ## [0.2.0] - 2026-05-12
 
 ### Added
