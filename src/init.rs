@@ -46,7 +46,7 @@ pub fn init_command() -> Result<()> {
         println!("  Worktree already exists. Skipping.");
     } else {
         fs::create_dir_all(".copycara")?;
-        fs::write(".copycara/.gitignore", "*\n")?;
+        fs::write(".copycara/.gitignore", "*\n!config.toml\n")?;
         if !Path::new(".copycara/config.toml").exists() {
             fs::write(".copycara/config.toml", CopycaraConfig::default_config_content())?;
         }
