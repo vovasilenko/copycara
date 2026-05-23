@@ -6,17 +6,16 @@ use anyhow::Result;
 
 pub fn push_command(force: bool, no_private: bool) -> Result<()> {
     let cfg = CopycaraConfig::load();
-    println!("[Copycara Push] Pushing clean code to origin...");
+    let branch = run_git(&["rev-parse", "--abbrev-ref", "HEAD"], None)?.trim().to_string();
+    let shadow_refspec = format!("refs/copycara/heads/{branch}:refs/heads/{branch}");
+
+    println!("[Copycara Push] Pushing clean code to origin ({branch})...");
 
     if force {
-        let branch = run_git(&["rev-parse", "--abbrev-ref", "HEAD"], None)?.trim().to_string();
         let flag = if cfg.push.force_with_lease { "--force-with-lease" } else { "--force" };
-        run_git(
-            &["push", flag, "origin", &format!("refs/copycara/heads/{branch}:refs/heads/{branch}")],
-            None,
-        )?;
+        run_git(&["push", flag, "origin", &shadow_refspec], None)?;
     } else {
-        run_git(&["push", "origin"], None)?;
+        run_git(&["push", "origin", &shadow_refspec], None)?;
     }
 
     if !no_private && cfg.push.auto_push_private {
