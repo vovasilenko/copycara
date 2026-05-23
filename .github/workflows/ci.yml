@@ -30,6 +30,10 @@ jobs:
       - run: cargo test
         env:
           RUSTFLAGS: ""
+      - run: cargo build --release
+      - run: bash test.sh
+        env:
+          COPYCARA_SANDBOX: /tmp/copycara-sandbox
 
   build:
     name: Build

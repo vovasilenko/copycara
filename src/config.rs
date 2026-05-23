@@ -7,7 +7,6 @@ use std::path::Path;
 pub struct CopycaraConfig {
     #[serde(default)]
     pub cleanup: CleanupConfig,
-    #[allow(dead_code)]
     #[serde(default)]
     pub push: PushConfig,
     #[serde(default)]
@@ -18,7 +17,6 @@ pub struct CopycaraConfig {
 pub struct CleanupConfig {
     #[serde(default = "default_cleanup_mode")]
     pub mode: String,
-    #[allow(dead_code)]
     #[serde(default)]
     pub extra_extensions: Vec<String>,
     #[serde(default)]
@@ -29,10 +27,8 @@ pub struct CleanupConfig {
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct PushConfig {
-    #[allow(dead_code)]
     #[serde(default = "default_true")]
     pub auto_push_private: bool,
-    #[allow(dead_code)]
     #[serde(default = "default_true")]
     pub force_with_lease: bool,
 }

@@ -5,7 +5,7 @@
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "copycara", version = "0.2", about = "Topological Git DLP Engine")]
+#[command(name = "copycara", version = "0.2.0", about = "Topological Git DLP Engine")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,

@@ -48,8 +48,8 @@ copycara push           # публикует чистый код + бэкап
 
 - Парсит исходный код синтаксически, а не регулярками
 - Не повреждает строковые литералы (`print("// не комментарий")`)
-- Поддерживает все языки tree-sitter: Python, Rust, JS, TS, C++, Go, Java, C#, Ruby, Bash и десятки других
-- Управляется файлом `.copycara/config.toml`
+- Поддерживает 36+ языков tree-sitter: Python, Rust, JS, TS, C, C++, Go, Java, C#, Ruby, PHP, Swift, Kotlin, Scala, Dart, Shell, Lua, Haskell, Elixir, Erlang, Clojure, Elm, Groovy, OCaml, Fortran, Julia, Zig, R, Perl, HTML, CSS, SCSS, SQL, JSON, YAML, TOML, XML, HCL, Nix, Make, Dockerfile, LaTeX, PowerShell, Protobuf, INI и другие
+- Расширяется через `.copycara/config.toml`: `extra_extensions` добавляет новые расширения, `extension_map` перенаправляет неизвестные на известные языки (rename-trick)
 
 Если коммит содержит только комментарии — он полностью отбрасывается из теневой истории (Drop Empty Commit).
 
@@ -386,7 +386,7 @@ git branch --set-upstream-to=private/main main
 
 ### Новые типы файлов / языки
 
-tree-sitter поддерживает большинство языков автоматически. Если файл не обрабатывается — проверьте расширение в списке `valid_exts` в `apply_dlp_cleanup()` или используйте `extra_extensions` в `.copycara/config.toml`.
+Copycara поддерживает 80+ расширений через tree-sitter. Если ваше расширение не в списке — добавьте его через `extra_extensions` в `.copycara/config.toml`. Если tree-sitter не знает язык — используйте `extension_map` для перенаправления (например, `.cu → .cpp`).
 
 ### После разрешения конфликтов sync
 

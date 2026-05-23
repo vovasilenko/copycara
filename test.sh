@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 COPYCARA_BIN="$SCRIPT_DIR/target/release/copycara"
-SANDBOX="$HOME/Lab/copycara-sandbox"
+SANDBOX="${COPYCARA_SANDBOX:-$HOME/Lab/copycara-sandbox}"
 PASS=0
 FAIL=0
 

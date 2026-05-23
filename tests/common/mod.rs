@@ -5,6 +5,9 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
+
+static TEST_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 pub fn copycara_bin() -> PathBuf {
     let mut path = std::env::current_exe().expect("current exe path");
@@ -28,10 +31,8 @@ pub struct TestEnv {
 
 impl TestEnv {
     pub fn new() -> Self {
-        let root = std::env::temp_dir().join(format!(
-            "copycara-test-{}",
-            std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
-        ));
+        let id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let root = std::env::temp_dir().join(format!("copycara-test-{id}"));
         let public = root.join("public.git");
         let private = root.join("private.git");
         let workspace = root.join("workspace");

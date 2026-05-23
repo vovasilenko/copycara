@@ -115,6 +115,11 @@ pub fn uninstall_command() -> Result<()> {
     println!("[Copycara Uninstall] 3. Removing Git hooks...");
     hooks::remove_hooks(Path::new(".git/hooks"));
 
+    println!("[Copycara Uninstall] 4. Removing git config hints...");
+    let _ = run_git(&["config", "--local", "--unset", "copycara.enabled"], None);
+    let _ = run_git(&["config", "--local", "--unset", "copycara.sync-command"], None);
+    let _ = run_git(&["config", "--local", "--unset", "copycara.push-command"], None);
+
     println!("\n[Success] Copycara DLP engine has been completely removed from this repository.");
     println!("Standard Git behavior is fully restored.");
     Ok(())

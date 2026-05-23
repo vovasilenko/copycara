@@ -11,8 +11,16 @@ use std::path::Path;
 use uncomment::config::{Config, ConfigManager};
 use uncomment::processor::{ProcessingOptions, Processor};
 
-const VALID_EXTENSIONS: &[&str] =
-    &["py", "rs", "js", "ts", "cpp", "c", "h", "hpp", "java", "go", "cs", "rb", "sh"];
+const VALID_EXTENSIONS: &[&str] = &[
+    "py", "pyw", "pyi", "pyx", "pxd", "rs", "js", "jsx", "mjs", "cjs", "ts", "tsx", "mts", "cts",
+    "cpp", "cxx", "cc", "c++", "hpp", "hxx", "hh", "h++", "c", "h", "java", "scala", "sc", "go",
+    "cs", "rb", "rbw", "gemspec", "rake", "sh", "bash", "zsh", "fish", "php", "phtml", "swift",
+    "kt", "kts", "lua", "hs", "lhs", "jl", "ex", "exs", "erl", "hrl", "dart", "zig", "r", "R",
+    "clj", "cljs", "cljc", "edn", "elm", "groovy", "gradle", "ml", "mli", "f90", "f95", "f03",
+    "f08", "pl", "pm", "vue", "svelte", "css", "scss", "sql", "html", "htm", "xhtml", "xml", "xsd",
+    "xsl", "xslt", "svg", "json", "jsonc", "yaml", "yml", "toml", "ini", "cfg", "conf", "hcl",
+    "tf", "tfvars", "proto", "nix", "tex", "sty", "cls", "ps1", "psm1", "psd1", "mk",
+];
 
 pub fn apply_dlp_cleanup(dir: &Path) -> Result<()> {
     println!("  [Copycara Engine] Applying uncomment (tree-sitter AST)...");
@@ -23,6 +31,7 @@ pub fn apply_dlp_cleanup(dir: &Path) -> Result<()> {
         _ => (true, true, true),
     };
     let ext_map = cfg.cleanup.extension_map.clone();
+    let extra_extensions = cfg.cleanup.extra_extensions.clone();
 
     let mut processor = Processor::new();
     let config_manager = ConfigManager::from_single_config(dir, Config::default())?;
@@ -38,7 +47,7 @@ pub fn apply_dlp_cleanup(dir: &Path) -> Result<()> {
         traverse_git_repos: false,
     };
 
-    visit_dirs(dir, &mut processor, &config_manager, &options, &ext_map)?;
+    visit_dirs(dir, &mut processor, &config_manager, &options, &ext_map, &extra_extensions)?;
     Ok(())
 }
 
@@ -93,6 +102,7 @@ fn visit_dirs(
     config_manager: &ConfigManager,
     options: &ProcessingOptions,
     ext_map: &HashMap<String, String>,
+    extra_extensions: &[String],
 ) -> Result<()> {
     if !current_dir.is_dir() {
         return Ok(());
@@ -103,11 +113,13 @@ fn visit_dirs(
 
         if path.is_dir() {
             if path.file_name().unwrap_or_default() != ".git" {
-                visit_dirs(&path, processor, config_manager, options, ext_map)?;
+                visit_dirs(&path, processor, config_manager, options, ext_map, extra_extensions)?;
             }
         } else if let Some(ext_os) = path.extension() {
             let ext = ext_os.to_string_lossy().to_lowercase();
-            if VALID_EXTENSIONS.contains(&ext.as_str()) || ext_map.contains_key(ext.as_str()) {
+            let known = VALID_EXTENSIONS.contains(&ext.as_str())
+                || extra_extensions.iter().any(|e| e.as_str() == ext.as_str());
+            if known || ext_map.contains_key(ext.as_str()) {
                 if let Some(target) = ext_map.get(ext.as_str()) {
                     process_mapped(&path, target, processor, config_manager, options)?;
                 } else {
