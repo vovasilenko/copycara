@@ -30,6 +30,8 @@ copycara push           # публикует чистый код + бэкап
 ```
 
 > Если в репозитории ещё нет коммитов — `copycara init` сам создаст пустой коммит.
+> 
+> Чтобы зафиксировать настройки `.copycara/config.toml` в private-бэкапе и для команды — создайте отдельную ветку (`feat/add-copycara`), закоммитьте конфиг и сделайте `copycara push`. Подробнее в разделе «Повседневный Workflow».
 
 ---
 
@@ -89,6 +91,7 @@ copycara init
 | 3 | Устанавливает 5 git hooks (post-commit, post-merge, post-rewrite, pre-push, post-checkout) |
 | 4 | Перенаправляет upstream текущей ветки на `private` (или отключает tracking на `origin`) |
 | 5 | Записывает `git config --local copycara.{enabled,sync-command,push-command}` |
+| 6 | Создаёт начальный теневой коммит для текущей ветки (прогоняет текущий HEAD через DLP) |
 
 ### `copycara push`
 
@@ -186,6 +189,24 @@ git checkout -b feature/new
 # post-checkout hook сам настроит upstream на private (или снимет tracking с origin)
 git push private       # бэкап новой ветки
 ```
+
+### Добавление `.copycara/config.toml` в проект
+
+Файл `.copycara/config.toml` содержит настройки Copycara и может быть закоммичен в dirty-репозиторий для сохранения в private-бэкап. При этом он **никогда не попадёт в публичный origin** — движок автоматически вырезает `.copycara/` из теневых коммитов.
+
+Рекомендуется добавлять конфиг через **отдельную ветку**, чтобы избежать `non-fast-forward` на основной ветке:
+
+```bash
+git checkout -b feat/add-copycara
+copycara init                            # если ещё не инициализирован
+git add .copycara/config.toml           # теперь config.toml не игнорится
+git commit -m "feat: add copycara config"
+copycara push                            # чистый код → origin, config → private
+```
+
+После этого ветку можно смержить в основную или оставить как есть. При клонировании private-репозитория настройки сохраняются.
+
+> Если добавляете на существующую основную ветку — первый push потребует `--force` (см. «Тонкие моменты»).
 
 ---
 
@@ -366,9 +387,13 @@ install_pre_push = true
 
 **Симптом:** `Updates were rejected because the tip of your current branch is behind...`
 
-**Причина:** Теневая история разошлась (например, после `amend` или `rebase` — post-rewrite пересоздаёт теневой коммит, и старый на сервере становится неактуальным).
+**Причина 1:** Теневая история разошлась (например, после `amend` или `rebase` — post-rewrite пересоздаёт теневой коммит, и старый на сервере становится неактуальным).
 
-**Решение:** `copycara push --force`. Использует `--force-with-lease` — безопасен при командной работе.
+**Причина 2:** `copycara init` на ветке, которая уже имеет историю на origin. Начальный теневой коммит не имеет общего предка с origin — Git не может сделать fast-forward.
+
+**Решение:** `copycara push --force`. Использует `--force-with-lease` — безопасен при командной работе. После первого force-пуша дальнейшие push'и работают без force.
+
+> Чтобы избежать force-push на основной ветке, добавляйте `.copycara/config.toml` в проект через отдельную ветку (см. раздел «Добавление .copycara/config.toml»).
 
 ### Сообщение `diverged` в `git status`
 
