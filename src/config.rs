@@ -122,6 +122,7 @@ impl CopycaraConfig {
         Self::default()
     }
 
+    #[allow(dead_code)]
     pub fn default_config_content() -> &'static str {
         r#"# Copycara DLP Engine Configuration
 # Edit this file to customize cleanup behaviour.
