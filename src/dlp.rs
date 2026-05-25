@@ -4,6 +4,7 @@
 //! Supports extension mapping for unsupported file types (rename-trick).
 
 use crate::config::CopycaraConfig;
+use crate::ignore::IgnoreRules;
 use anyhow::Result;
 use std::collections::HashMap;
 use std::fs;
@@ -32,6 +33,7 @@ pub fn apply_dlp_cleanup(dir: &Path) -> Result<()> {
     };
     let ext_map = cfg.cleanup.extension_map.clone();
     let extra_extensions = cfg.cleanup.extra_extensions.clone();
+    let ignore = IgnoreRules::load();
 
     let mut processor = Processor::new();
     let config_manager = ConfigManager::from_single_config(dir, Config::default())?;
@@ -47,7 +49,17 @@ pub fn apply_dlp_cleanup(dir: &Path) -> Result<()> {
         traverse_git_repos: false,
     };
 
-    visit_dirs(dir, &mut processor, &config_manager, &options, &ext_map, &extra_extensions)?;
+    let base_dir = dir.canonicalize().unwrap_or_else(|_| dir.to_path_buf());
+    let mut ctx = VisitContext {
+        processor: &mut processor,
+        config_manager: &config_manager,
+        options: &options,
+        ext_map: &ext_map,
+        extra_extensions: &extra_extensions,
+        ignore: &ignore,
+        base_dir: &base_dir,
+    };
+    visit_dirs(&base_dir, &mut ctx)?;
     Ok(())
 }
 
@@ -96,14 +108,17 @@ fn process_normal(
     Ok(())
 }
 
-fn visit_dirs(
-    current_dir: &Path,
-    processor: &mut Processor,
-    config_manager: &ConfigManager,
-    options: &ProcessingOptions,
-    ext_map: &HashMap<String, String>,
-    extra_extensions: &[String],
-) -> Result<()> {
+struct VisitContext<'a> {
+    processor: &'a mut Processor,
+    config_manager: &'a ConfigManager,
+    options: &'a ProcessingOptions,
+    ext_map: &'a HashMap<String, String>,
+    extra_extensions: &'a [String],
+    ignore: &'a IgnoreRules,
+    base_dir: &'a Path,
+}
+
+fn visit_dirs(current_dir: &Path, ctx: &mut VisitContext<'_>) -> Result<()> {
     if !current_dir.is_dir() {
         return Ok(());
     }
@@ -111,20 +126,26 @@ fn visit_dirs(
         let entry = entry?;
         let path = entry.path();
 
+        let relative = path.strip_prefix(ctx.base_dir).unwrap_or(&path);
+
         if path.is_dir() {
-            let dir_name = path.file_name().unwrap_or_default();
-            if dir_name != ".git" && dir_name != ".copycara" {
-                visit_dirs(&path, processor, config_manager, options, ext_map, extra_extensions)?;
+            let dir_name = relative.file_name().unwrap_or_default();
+            if dir_name == ".git" || ctx.ignore.is_ignored(relative) {
+                continue;
             }
+            visit_dirs(&path, ctx)?;
         } else if let Some(ext_os) = path.extension() {
             let ext = ext_os.to_string_lossy().to_lowercase();
             let known = VALID_EXTENSIONS.contains(&ext.as_str())
-                || extra_extensions.iter().any(|e| e.as_str() == ext.as_str());
-            if known || ext_map.contains_key(ext.as_str()) {
-                if let Some(target) = ext_map.get(ext.as_str()) {
-                    process_mapped(&path, target, processor, config_manager, options)?;
+                || ctx.extra_extensions.iter().any(|e| e.as_str() == ext.as_str());
+            if known || ctx.ext_map.contains_key(ext.as_str()) {
+                if ctx.ignore.is_ignored(relative) {
+                    continue;
+                }
+                if let Some(target) = ctx.ext_map.get(ext.as_str()) {
+                    process_mapped(&path, target, ctx.processor, ctx.config_manager, ctx.options)?;
                 } else {
-                    process_normal(&path, processor, config_manager, options)?;
+                    process_normal(&path, ctx.processor, ctx.config_manager, ctx.options)?;
                 }
             }
         }

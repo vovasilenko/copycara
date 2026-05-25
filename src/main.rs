@@ -12,6 +12,7 @@ mod config;
 mod dlp;
 mod git;
 mod hooks;
+mod ignore;
 mod init;
 mod push;
 mod sync;

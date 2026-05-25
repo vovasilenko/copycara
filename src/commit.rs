@@ -5,6 +5,7 @@
 
 use crate::dlp;
 use crate::git::{run_git, run_git_with_stdin};
+use crate::ignore::IgnoreRules;
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
@@ -63,11 +64,18 @@ pub fn process_commit_command(target_hash: &str) -> Result<()> {
     run_git(&["checkout", &original_hash, "--", "."], Some(mirror_dir))?;
     dlp::apply_dlp_cleanup(Path::new(mirror_dir)).context("Failed to apply uncomment library")?;
 
-    // Stage all DLP-cleaned files first, THEN remove .copycara/ from the index.
-    // Order matters: git add re-stages any file still on disk, so rm --cached
-    // must happen AFTER add to keep .copycara/ permanently out of the shadow tree.
+    // Stage all DLP-cleaned files, then remove ignored paths from the tree.
+    // Uses .copycara/.ignore (default: /.copycara/) to keep Copycara itself invisible.
     run_git(&["add", "."], Some(mirror_dir))?;
-    let _ = run_git(&["rm", "-rf", "--cached", ".copycara"], Some(mirror_dir));
+
+    let ignore = IgnoreRules::load();
+    let staged = run_git(&["diff", "--cached", "--name-only"], Some(mirror_dir))?;
+    for file in staged.lines() {
+        let file = file.trim();
+        if !file.is_empty() && ignore.is_ignored(Path::new(file)) {
+            let _ = run_git(&["rm", "--cached", "--quiet", file], Some(mirror_dir));
+        }
+    }
 
     let is_clean = run_git(&["diff", "--cached", "--quiet"], Some(mirror_dir)).is_ok();
 

@@ -8,6 +8,7 @@
 use crate::config::CopycaraConfig;
 use crate::git::run_git;
 use crate::hooks;
+use crate::ignore::IgnoreRules;
 use anyhow::{Context, Result};
 use std::fs;
 use std::path::Path;
@@ -17,8 +18,7 @@ fn remote_exists(remote_name: &str) -> bool {
 }
 
 fn detected_config_content() -> String {
-    let public =
-        if remote_exists("origin") { r#"public = ["origin"]"# } else { r"public = []" };
+    let public = if remote_exists("origin") { r#"public = ["origin"]"# } else { r"public = []" };
     let private =
         if remote_exists("private") { r#"private = ["private"]"# } else { r"private = []" };
 
@@ -121,6 +121,9 @@ pub fn init_command() -> Result<()> {
         fs::write(".copycara/.gitignore", "*\n!config.toml\n")?;
         if !Path::new(".copycara/config.toml").exists() {
             fs::write(".copycara/config.toml", detected_config_content())?;
+        }
+        if !Path::new(".copycara/.ignore").exists() {
+            fs::write(".copycara/.ignore", IgnoreRules::default_content())?;
         }
         run_git(&["worktree", "add", "-q", "--detach", ".copycara/mirror"], None)?;
     }
