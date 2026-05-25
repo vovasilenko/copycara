@@ -17,9 +17,10 @@ fn remote_exists(remote_name: &str) -> bool {
 }
 
 fn detected_config_content() -> String {
-    let public = if remote_exists("origin") { r#"public = ["origin"]"# } else { r#"public = []"# };
+    let public =
+        if remote_exists("origin") { r#"public = ["origin"]"# } else { r"public = []" };
     let private =
-        if remote_exists("private") { r#"private = ["private"]"# } else { r#"private = []"# };
+        if remote_exists("private") { r#"private = ["private"]"# } else { r"private = []" };
 
     r#"# Copycara DLP Engine Configuration
 # Edit this file to customize cleanup behaviour.
