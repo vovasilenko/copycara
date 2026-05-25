@@ -10,6 +10,8 @@ pub struct CopycaraConfig {
     #[serde(default)]
     pub push: PushConfig,
     #[serde(default)]
+    pub remotes: RemoteConfig,
+    #[serde(default)]
     pub hooks: HooksConfig,
 }
 
@@ -28,14 +30,26 @@ pub struct CleanupConfig {
 #[derive(Debug, Clone, Deserialize)]
 pub struct PushConfig {
     #[serde(default = "default_true")]
-    pub auto_push_private: bool,
-    #[serde(default = "default_true")]
     pub force_with_lease: bool,
 }
 
 impl Default for PushConfig {
     fn default() -> Self {
-        Self { auto_push_private: true, force_with_lease: true }
+        Self { force_with_lease: true }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RemoteConfig {
+    #[serde(default = "default_public_remotes")]
+    pub public: Vec<String>,
+    #[serde(default = "default_private_remotes")]
+    pub private: Vec<String>,
+}
+
+impl Default for RemoteConfig {
+    fn default() -> Self {
+        Self { public: vec!["origin".to_string()], private: vec!["private".to_string()] }
     }
 }
 
@@ -61,6 +75,14 @@ fn default_true() -> bool {
     true
 }
 
+fn default_public_remotes() -> Vec<String> {
+    vec!["origin".to_string()]
+}
+
+fn default_private_remotes() -> Vec<String> {
+    vec!["private".to_string()]
+}
+
 impl Default for CopycaraConfig {
     fn default() -> Self {
         Self {
@@ -70,7 +92,8 @@ impl Default for CopycaraConfig {
                 preserve_patterns: vec![],
                 extension_map: HashMap::new(),
             },
-            push: PushConfig { auto_push_private: true, force_with_lease: true },
+            push: PushConfig { force_with_lease: true },
+            remotes: RemoteConfig::default(),
             hooks: HooksConfig { install_pre_push: true, install_post_checkout: true },
         }
     }
@@ -120,8 +143,15 @@ preserve_patterns = ["COPYCARA-KEEP", "NO-DLP"]
 # extension_map = { cu = "cpp", cuh = "cpp" }
 extension_map = {}
 
+[remotes]
+# Remote-ы, в которые уходит ЧИСТЫЙ код (теневые refs без комментариев)
+public = ["origin"]
+
+# Remote-ы, в которые уходит ГРЯЗНЫЙ бэкап (оригинальный код + git notes)
+private = ["private"]
+
 [push]
-auto_push_private = true
+# Использовать --force-with-lease при copycara push --force
 force_with_lease = true
 
 [hooks]
@@ -141,8 +171,9 @@ mod tests {
         assert_eq!(cfg.cleanup.mode, "all");
         assert!(cfg.cleanup.preserve_patterns.is_empty());
         assert!(cfg.cleanup.extension_map.is_empty());
-        assert!(cfg.push.auto_push_private);
         assert!(cfg.push.force_with_lease);
+        assert_eq!(cfg.remotes.public, vec!["origin"]);
+        assert_eq!(cfg.remotes.private, vec!["private"]);
         assert!(cfg.hooks.install_pre_push);
         assert!(cfg.hooks.install_post_checkout);
     }
@@ -155,8 +186,11 @@ mode = "smart"
 preserve_patterns = ["KEEP-ME"]
 extension_map = { cu = "cpp" }
 
+[remotes]
+public = ["origin", "mirror"]
+private = ["private", "backup"]
+
 [push]
-auto_push_private = false
 force_with_lease = false
 
 [hooks]
@@ -167,7 +201,9 @@ install_post_checkout = false
         assert_eq!(cfg.cleanup.mode, "smart");
         assert_eq!(cfg.cleanup.preserve_patterns, vec!["KEEP-ME"]);
         assert_eq!(cfg.cleanup.extension_map.get("cu").unwrap(), "cpp");
-        assert!(!cfg.push.auto_push_private);
+        assert_eq!(cfg.remotes.public, vec!["origin", "mirror"]);
+        assert_eq!(cfg.remotes.private, vec!["private", "backup"]);
+        assert!(!cfg.push.force_with_lease);
         assert!(!cfg.hooks.install_pre_push);
     }
 
@@ -183,7 +219,8 @@ install_post_checkout = false
         let cfg: CopycaraConfig = toml::from_str("[cleanup]\n[push]\n[hooks]\n").unwrap();
         assert_eq!(cfg.cleanup.mode, "all");
         assert!(cfg.cleanup.extension_map.is_empty());
-        assert!(cfg.push.auto_push_private);
+        assert_eq!(cfg.remotes.public, vec!["origin"]);
+        assert_eq!(cfg.remotes.private, vec!["private"]);
     }
 
     #[test]
