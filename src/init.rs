@@ -3,6 +3,8 @@
 //! `init_command` prepares a repository for Copycara DLP processing:
 //! autofix for empty repos, worktree, config with auto-detected remotes,
 //! refspecs, hooks, upstream config, git config hints, initial shadow commit.
+//! On second run it updates existing setup: fixes refspecs, reinstalls hooks,
+//! and recreates missing files without touching user config.
 //! `uninstall_command` reverses everything.
 
 use crate::config::CopycaraConfig;
@@ -18,7 +20,8 @@ fn remote_exists(remote_name: &str) -> bool {
 }
 
 fn detected_config_content() -> String {
-    let public = if remote_exists("origin") { r#"public = ["origin"]"# } else { r"public = []" };
+    let public =
+        if remote_exists("origin") { r#"public = ["origin"]"# } else { r"public = []" };
     let private =
         if remote_exists("private") { r#"private = ["private"]"# } else { r"private = []" };
 
@@ -113,18 +116,34 @@ pub fn init_command() -> Result<()> {
         run_git(&["commit", "--allow-empty", "-m", "chore: copycara initialization"], None)?;
     }
 
-    println!("[Copycara Init] 1. Creating shadow worktree and config with detected remotes...");
-    if Path::new(".copycara/mirror").exists() {
-        println!("  Worktree already exists. Skipping.");
-    } else {
-        fs::create_dir_all(".copycara")?;
-        fs::write(".copycara/.gitignore", "*\n!config.toml\n")?;
-        if !Path::new(".copycara/config.toml").exists() {
-            fs::write(".copycara/config.toml", detected_config_content())?;
-        }
-        if !Path::new(".copycara/.ignore").exists() {
-            fs::write(".copycara/.ignore", IgnoreRules::default_content())?;
-        }
+    let is_reinit = Path::new(".copycara/mirror").exists();
+    if is_reinit {
+        println!("[Copycara Init] Detected existing setup — updating...");
+    }
+
+    // Step 1: Ensure .copycara/ directory and required files exist
+    fs::create_dir_all(".copycara")?;
+
+    // Always write .gitignore — idempotent, user doesn't customize it
+    fs::write(".copycara/.gitignore", "*\n!config.toml\n")?;
+
+    // Never overwrite config.toml — user data
+    if !Path::new(".copycara/config.toml").exists() {
+        println!("[Copycara Init] 1. Creating config with detected remotes...");
+        fs::write(".copycara/config.toml", detected_config_content())?;
+    } else if !is_reinit {
+        println!("[Copycara Init] 1. Config file already exists — keeping it.");
+    }
+
+    // Always recreate .ignore if missing — user might have deleted it
+    if !Path::new(".copycara/.ignore").exists() {
+        println!("[Copycara Init]    Creating .copycara/.ignore with defaults...");
+        fs::write(".copycara/.ignore", IgnoreRules::default_content())?;
+    }
+
+    // Create mirror worktree if not exists
+    if !is_reinit {
+        println!("[Copycara Init]    Creating shadow worktree...");
         run_git(&["worktree", "add", "-q", "--detach", ".copycara/mirror"], None)?;
     }
 
@@ -134,15 +153,21 @@ pub fn init_command() -> Result<()> {
     println!("  Public remotes (clean code):   [{public}]");
     println!("  Private remotes (dirty backup): [{private}]");
 
-    println!("[Copycara Init] 2. Configuring Git refspecs for transparent routing...");
+    // Step 2: Refspecs — remove old ones first to avoid duplicates, then add fresh
+    println!("[Copycara Init] 2. Fixing Git refspecs...");
+    if is_reinit {
+        remove_refspecs(&cfg);
+    }
     setup_refspecs(&cfg);
 
-    println!("[Copycara Init] 3. Installing Copycara hooks...");
+    // Step 3: Hooks — always reinstall with current config (updates pre-push remote list)
+    println!("[Copycara Init] 3. Installing / updating Copycara hooks...");
     let hooks_dir = Path::new(".git/hooks");
     let exe_path = std::env::current_exe().context("Failed to get current executable path")?;
     let exe_str = exe_path.to_str().context("Executable path contains invalid UTF-8")?;
     hooks::install_hooks(hooks_dir, exe_str, &cfg)?;
 
+    // Step 4: Upstream tracking
     println!("[Copycara Init] 4. Configuring branch upstream tracking...");
     let current_branch = run_git(&["rev-parse", "--abbrev-ref", "HEAD"], None)?.trim().to_string();
     if remote_exists("private") {
@@ -165,18 +190,29 @@ pub fn init_command() -> Result<()> {
         }
     }
 
+    // Step 5: Git config hints
     println!("[Copycara Init] 5. Writing git config hints for AI agents...");
     let _ = run_git(&["config", "--local", "copycara.enabled", "true"], None);
     let _ = run_git(&["config", "--local", "copycara.sync-command", "copycara sync"], None);
     let _ = run_git(&["config", "--local", "copycara.push-command", "copycara push"], None);
 
-    println!("[Copycara Init] 6. Creating initial shadow commit for current branch...");
-    if let Err(e) = crate::commit::process_commit_command("HEAD") {
-        eprintln!("  [Warning] Could not create initial shadow commit: {e}");
-        eprintln!("  The first 'copycara push' may fail. Push with '--force' to bootstrap.");
+    // Step 6: Shadow commit — only if ref doesn't already exist
+    let shadow_ref = format!("refs/copycara/heads/{current_branch}");
+    if run_git(&["rev-parse", &shadow_ref], None).is_err() {
+        println!("[Copycara Init] 6. Creating initial shadow commit...");
+        if let Err(e) = crate::commit::process_commit_command("HEAD") {
+            eprintln!("  [Warning] Could not create initial shadow commit: {e}");
+            eprintln!("  The first 'copycara push' may fail. Push with '--force' to bootstrap.");
+        }
+    } else if !is_reinit {
+        println!("[Copycara Init] 6. Shadow ref already exists — skipping.");
     }
 
-    println!("\n[Success] Repository initialized with Copycara DLP engine!");
+    if is_reinit {
+        println!("\n[Success] Copycara DLP engine setup updated!");
+    } else {
+        println!("\n[Success] Repository initialized with Copycara DLP engine!");
+    }
     println!("Hooks point to: {exe_str}");
 
     Ok(())
