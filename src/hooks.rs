@@ -8,15 +8,20 @@ use crate::git::write_executable_script;
 use anyhow::Result;
 use std::path::Path;
 
-pub fn generate_pre_push_hook() -> &'static str {
-    r#"#!/bin/bash
-# Copycara pre-push hook — blocks direct push of dirty branches to origin
+pub fn generate_pre_push_hook(public_remotes: &[String]) -> String {
+    let remotes = public_remotes.join(" ");
+    format!(
+        r#"#!/bin/bash
+# Copycara pre-push hook — blocks direct push of dirty branches to public remotes.
 REMOTE="$1"
-REMOTE_URL="$2"
 
-if [ "$REMOTE" != "origin" ]; then
-    exit 0
-fi
+# Public remotes (configured in .copycara/config.toml [remotes] public = [...])
+PUBLIC_REMOTES="{remotes}"
+
+case " $PUBLIC_REMOTES " in
+    *" $REMOTE "*) ;;
+    *) exit 0 ;;
+esac
 
 BLOCKED=false
 
@@ -27,18 +32,18 @@ while read LOCAL_REF LOCAL_SHA REMOTE_REF REMOTE_SHA; do
         cat >&2 <<BLOCKMSG
 
 ╔══════════════════════════════════════════════════════════════╗
-║ [COPYCARA] BLOCKED: direct push to origin                   ║
+║ [COPYCARA] BLOCKED: direct push to $REMOTE                   ║
 ╠══════════════════════════════════════════════════════════════╣
 ║                                                              ║
-║  Push of refs/heads/${BRANCH_NAME} -> origin is FORBIDDEN.   ║
+║  Push of refs/heads/${{BRANCH_NAME}} -> $REMOTE is FORBIDDEN. ║
 ║                                                              ║
 ║  This would expose annotated (dirty) code with your          ║
 ║  private methodology tags (PACM, GRACE, etc.) to the         ║
 ║  public repository.                                          ║
 ║                                                              ║
 ║  CORRECT COMMANDS:                                           ║
-║    git push origin              (no branch name)             ║
-║    copycara push                 (safe wrapper)               ║
+║    git push $REMOTE              (no branch name)            ║
+║    copycara push                 (safe wrapper)              ║
 ║                                                              ║
 ╚══════════════════════════════════════════════════════════════╝
 
@@ -53,6 +58,7 @@ fi
 
 exit 0
 "#
+    )
 }
 
 pub fn generate_post_checkout_hook() -> &'static str {
@@ -91,7 +97,8 @@ pub fn install_hooks(hooks_dir: &Path, exe_path: &str, config: &CopycaraConfig) 
     write_executable_script(&hooks_dir.join("post-rewrite"), &post_rewrite)?;
 
     if config.hooks.install_pre_push {
-        write_executable_script(&hooks_dir.join("pre-push"), generate_pre_push_hook())?;
+        let pre_push = generate_pre_push_hook(&config.remotes.public);
+        write_executable_script(&hooks_dir.join("pre-push"), &pre_push)?;
     }
 
     if config.hooks.install_post_checkout {
@@ -115,18 +122,28 @@ mod tests {
 
     #[test]
     fn test_pre_push_hook_contains_blocked() {
-        let hook = generate_pre_push_hook();
+        let hook = generate_pre_push_hook(&["origin".to_string()]);
         assert!(hook.contains("COPYCARA"));
         assert!(hook.contains("BLOCKED"));
-        assert!(hook.contains("git push origin"));
+        assert!(hook.contains("origin"));
     }
 
     #[test]
-    fn test_pre_push_hook_skips_non_origin() {
-        let hook = generate_pre_push_hook();
-        // The hook checks REMOTE != "origin" and exits 0
-        assert!(hook.contains(r#"origin"#));
-        assert!(hook.contains(r#"exit 0"#));
+    fn test_pre_push_hook_skips_non_public() {
+        let hook = generate_pre_push_hook(&["origin".to_string()]);
+        // The hook should skip non-public remotes (case statement)
+        assert!(hook.contains("PUBLIC_REMOTES"));
+        assert!(hook.contains("exit 0"));
+    }
+
+    #[test]
+    fn test_pre_push_hook_blocks_all_public() {
+        let hook = generate_pre_push_hook(&[
+            "origin".to_string(),
+            "local".to_string(),
+        ]);
+        assert!(hook.contains("origin local"));
+        assert!(hook.contains("local"));
     }
 
     #[test]
@@ -156,7 +173,6 @@ mod tests {
             hooks: HooksConfig { install_pre_push: false, install_post_checkout: false },
             ..CopycaraConfig::default()
         };
-        // No actual file writes; this just validates the config is used
         assert!(!config.hooks.install_pre_push);
         assert!(!config.hooks.install_post_checkout);
     }
