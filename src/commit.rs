@@ -61,7 +61,12 @@ pub fn process_commit_command(target_hash: &str) -> Result<()> {
         run_git(&["checkout", "-q", &shadow_parent], Some(mirror_dir))?;
     }
 
-    run_git(&["checkout", &original_hash, "--", "."], Some(mirror_dir))?;
+    // Use read-tree --reset -u to sync the mirror's index and working tree to
+    // exactly match the dirty commit: handles additions, modifications, AND deletions.
+    // Unlike `git checkout <hash> -- .`, read-tree -u also removes files that
+    // were deleted in the dirty commit from both the index and working directory.
+    run_git(&["read-tree", "--reset", "-u", &original_hash], Some(mirror_dir))?;
+
     dlp::apply_dlp_cleanup(Path::new(mirror_dir)).context("Failed to apply uncomment library")?;
 
     // Stage all DLP-cleaned files, then remove ignored paths from the tree.
