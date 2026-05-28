@@ -138,10 +138,7 @@ mod tests {
 
     #[test]
     fn test_pre_push_hook_blocks_all_public() {
-        let hook = generate_pre_push_hook(&[
-            "origin".to_string(),
-            "local".to_string(),
-        ]);
+        let hook = generate_pre_push_hook(&["origin".to_string(), "local".to_string()]);
         assert!(hook.contains("origin local"));
         assert!(hook.contains("local"));
     }

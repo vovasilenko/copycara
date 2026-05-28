@@ -20,8 +20,7 @@ fn remote_exists(remote_name: &str) -> bool {
 }
 
 fn detected_config_content() -> String {
-    let public =
-        if remote_exists("origin") { r#"public = ["origin"]"# } else { r"public = []" };
+    let public = if remote_exists("origin") { r#"public = ["origin"]"# } else { r"public = []" };
     let private =
         if remote_exists("private") { r#"private = ["private"]"# } else { r"private = []" };
 
@@ -55,6 +54,10 @@ __PRIVATE__
 [push]
 # Использовать --force-with-lease при copycara push --force
 force_with_lease = true
+
+# Создавать теневые коммиты, даже если чистый diff пуст (только комментарии изменились).
+# Нужно для CI: если diff пуст, ветка всё равно двигается и pipeline запускается.
+allow_empty_diff = false
 
 [hooks]
 install_pre_push = true

@@ -31,11 +31,15 @@ pub struct CleanupConfig {
 pub struct PushConfig {
     #[serde(default = "default_true")]
     pub force_with_lease: bool,
+    /// Create shadow commits even when the clean diff is empty (only comments changed).
+    /// Needed for CI: empty-diff commits still advance the branch to trigger pipelines.
+    #[serde(default)]
+    pub allow_empty_diff: bool,
 }
 
 impl Default for PushConfig {
     fn default() -> Self {
-        Self { force_with_lease: true }
+        Self { force_with_lease: true, allow_empty_diff: false }
     }
 }
 
@@ -92,7 +96,7 @@ impl Default for CopycaraConfig {
                 preserve_patterns: vec![],
                 extension_map: HashMap::new(),
             },
-            push: PushConfig { force_with_lease: true },
+            push: PushConfig { force_with_lease: true, allow_empty_diff: false },
             remotes: RemoteConfig::default(),
             hooks: HooksConfig { install_pre_push: true, install_post_checkout: true },
         }
@@ -154,6 +158,10 @@ private = ["private"]
 [push]
 # Использовать --force-with-lease при copycara push --force
 force_with_lease = true
+
+# Создавать теневые коммиты, даже если чистый diff пуст (только комментарии изменились).
+# Нужно для CI: если diff пуст, ветка всё равно двигается и pipeline запускается.
+allow_empty_diff = false
 
 [hooks]
 install_pre_push = true

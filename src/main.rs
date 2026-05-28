@@ -15,6 +15,7 @@ mod hooks;
 mod ignore;
 mod init;
 mod push;
+mod status;
 mod sync;
 
 use anyhow::Result;
@@ -27,6 +28,7 @@ fn main() -> Result<()> {
     match cli.command {
         Commands::Init => init::init_command(),
         Commands::Uninstall => init::uninstall_command(),
+        Commands::Status => status::status_command(),
         Commands::ProcessCommit { target_hash } => commit::process_commit_command(&target_hash),
         Commands::Sync { resume } => {
             if resume {
@@ -35,6 +37,8 @@ fn main() -> Result<()> {
                 sync::sync_start()
             }
         }
-        Commands::Push { force, no_private } => push::push_command(force, no_private),
+        Commands::Push { force, no_private, continue_on_error } => {
+            push::push_command(force, no_private, continue_on_error)
+        }
     }
 }

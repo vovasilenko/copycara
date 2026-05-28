@@ -17,6 +17,8 @@ pub enum Commands {
     Init,
     /// Completely remove Copycara from the repository (restore standard Git)
     Uninstall,
+    /// Show health status of Copycara in this repository
+    Status,
     /// Process a commit (called automatically via git hooks)
     ProcessCommit {
         /// Commit hash to process
@@ -36,5 +38,8 @@ pub enum Commands {
         /// Skip push to private remote
         #[arg(long)]
         no_private: bool,
+        /// Continue pushing to other remotes even if one fails
+        #[arg(long)]
+        continue_on_error: bool,
     },
 }

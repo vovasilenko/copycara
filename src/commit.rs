@@ -13,6 +13,15 @@ use std::path::Path;
 const SYNC_STATE_FILE: &str = ".copycara/SYNC_IN_PROGRESS";
 const PATCH_FILE: &str = ".copycara/patch.diff";
 
+/// Extract the tree hash from a given commit. Returns empty string on failure.
+fn tree_hash_of(commit: &str) -> String {
+    run_git(&["rev-parse", &format!("{commit}^{{tree}}")], None)
+        .unwrap_or_default()
+        .trim()
+        .to_string()
+}
+
+#[allow(clippy::too_many_lines)]
 pub fn process_commit_command(target_hash: &str) -> Result<()> {
     if Path::new(SYNC_STATE_FILE).exists() {
         return finalize_sync(target_hash);
@@ -61,10 +70,6 @@ pub fn process_commit_command(target_hash: &str) -> Result<()> {
         run_git(&["checkout", "-q", &shadow_parent], Some(mirror_dir))?;
     }
 
-    // Use read-tree --reset -u to sync the mirror's index and working tree to
-    // exactly match the dirty commit: handles additions, modifications, AND deletions.
-    // Unlike `git checkout <hash> -- .`, read-tree -u also removes files that
-    // were deleted in the dirty commit from both the index and working directory.
     run_git(&["read-tree", "--reset", "-u", &original_hash], Some(mirror_dir))?;
 
     dlp::apply_dlp_cleanup(Path::new(mirror_dir)).context("Failed to apply uncomment library")?;
@@ -85,16 +90,77 @@ pub fn process_commit_command(target_hash: &str) -> Result<()> {
     let is_clean = run_git(&["diff", "--cached", "--quiet"], Some(mirror_dir)).is_ok();
 
     if is_clean {
-        println!("[Copycara Engine] Diff is empty. Dropping commit from shadow history.");
-        let _ = run_git(
-            &["notes", "--ref", "copycara-map", "add", "-f", "-m", &shadow_parent, &original_hash],
-            None,
-        );
-        if current_branch != "HEAD" {
+        let cfg = crate::config::CopycaraConfig::load();
+        if cfg.push.allow_empty_diff && !shadow_parent.is_empty() {
+            // Create a shadow commit with the SAME tree as shadow_parent.
+            // This advances the branch (needed for CI triggers) without
+            // actually changing any file content.
+            let tree_hash = tree_hash_of(&shadow_parent);
+            if tree_hash.is_empty() {
+                println!("[Copycara Engine] Warning: could not resolve shadow_parent tree.");
+            } else {
+                let commit_args = vec!["commit-tree", &tree_hash, "-p", &shadow_parent];
+                let shadow_hash = run_git_with_stdin(
+                    &commit_args,
+                    Some(mirror_dir),
+                    "[ci skip: comments-only change]\n",
+                )?
+                .trim()
+                .to_string();
+
+                let _ = run_git(
+                    &[
+                        "notes",
+                        "--ref",
+                        "copycara-map",
+                        "add",
+                        "-f",
+                        "-m",
+                        &shadow_hash,
+                        &original_hash,
+                    ],
+                    None,
+                );
+                if current_branch != "HEAD" {
+                    run_git(
+                        &[
+                            "update-ref",
+                            &format!("refs/copycara/heads/{current_branch}"),
+                            &shadow_hash,
+                        ],
+                        None,
+                    )?;
+                }
+                println!(
+                    "[Copycara Engine] Empty-diff shadow commit created: {} (CI trigger).",
+                    &shadow_hash[..7]
+                );
+            }
+        } else {
+            println!("[Copycara Engine] Diff is empty. Dropping commit from shadow history.");
             let _ = run_git(
-                &["update-ref", &format!("refs/copycara/heads/{current_branch}"), &shadow_parent],
+                &[
+                    "notes",
+                    "--ref",
+                    "copycara-map",
+                    "add",
+                    "-f",
+                    "-m",
+                    &shadow_parent,
+                    &original_hash,
+                ],
                 None,
             );
+            if current_branch != "HEAD" {
+                let _ = run_git(
+                    &[
+                        "update-ref",
+                        &format!("refs/copycara/heads/{current_branch}"),
+                        &shadow_parent,
+                    ],
+                    None,
+                );
+            }
         }
     } else {
         let parents = run_git(&["log", "-1", "--pretty=%P", &original_hash], None)?;
