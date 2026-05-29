@@ -41,5 +41,8 @@ pub enum Commands {
         /// Continue pushing to other remotes even if one fails
         #[arg(long)]
         continue_on_error: bool,
+        /// Push ALL branches (not just current branch)
+        #[arg(long)]
+        all: bool,
     },
 }

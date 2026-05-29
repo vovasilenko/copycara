@@ -37,8 +37,8 @@ fn main() -> Result<()> {
                 sync::sync_start()
             }
         }
-        Commands::Push { force, no_private, continue_on_error } => {
-            push::push_command(force, no_private, continue_on_error)
+        Commands::Push { force, no_private, continue_on_error, all } => {
+            push::push_command(force, no_private, continue_on_error, all)
         }
     }
 }
