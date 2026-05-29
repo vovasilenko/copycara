@@ -119,7 +119,27 @@ fn push_to_public(
 
         if let Err(e) = result {
             let msg = format!("{e}");
-            if msg.contains("non-fast-forward") || msg.contains("[rejected]") {
+            // Force-with-lease may fail if there's no local tracking for this
+            // branch (e.g., orphan shadow commit on a branch that exists on
+            // remote but was never fetched). Fall back to real --force.
+            if force && force_flag == "--force-with-lease" {
+                eprintln!(
+                    "  [Info] --force-with-lease failed on {remote}, retrying with --force..."
+                );
+                let hard_result = run_git(&["push", "--force", remote, shadow_refspec], None);
+                if let Err(he) = hard_result {
+                    if continue_on_error {
+                        eprintln!("  [Error] {remote}: {he}");
+                        errors.push(format!("{remote}: {he}"));
+                        continue;
+                    }
+                    return Err(he).context(format!("Failed to push shadow ref to {remote}"));
+                }
+                continue;
+            }
+
+            // In non-force mode, detect the common "no shadow ref" case
+            if !force && (msg.contains("non-fast-forward") || msg.contains("[rejected]")) {
                 let err_msg = format!(
                     "Push rejected — the shadow ref for '{branch}' has no common ancestor with {remote}.\n\
                      This happens after 'copycara init' on a branch that already has history on {remote}.\n\
